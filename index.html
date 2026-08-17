@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pemesanan Shuttle - Penumpang</title>
+    <style>
+        * { box-sizing: border-box; font-family: sans-serif; }
+        body { background-color: #f0f2f5; margin: 0; padding: 15px; color: #1c1e21; }
+        .header { text-align: center; margin-bottom: 20px; }
+        .header h2 { margin: 0; color: #0d6efd; }
+        .card { background: #ffffff; border-radius: 12px; padding: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 16px; }
+        .form-group { margin-bottom: 12px; }
+        label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+        select, input[type="text"] { width: 100%; padding: 10px; border: 1px solid #ced4da; border-radius: 8px; font-size: 14px; background-color: #fff; }
+        button { width: 100%; padding: 12px; border: none; border-radius: 8px; font-size: 15px; font-weight: bold; cursor: pointer; }
+        .btn-primary { background-color: #0d6efd; color: white; }
+        .btn-danger { background-color: #dc3545; color: white; margin-top: 10px; }
+        .btn-clear { background-color: #6c757d; color: white; padding: 6px 12px; font-size: 12px; border-radius: 6px; width: auto; float: right; }
+        .status-badge { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: bold; margin-bottom: 10px; }
+        .status-PENDING { background-color: #fff3cd; color: #856404; }
+        .status-ACCEPTED { background-color: #d1e7dd; color: #0f5132; }
+        .info-row { display: flex; justify-content: space-between; font-size: 14px; margin-bottom: 8px; border-bottom: 1px dashed #eee; padding-bottom: 6px; }
+        .hidden { display: none !important; }
+        .user-profile { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px solid #eee; }
+        
+        /* Style Riwayat Pemesanan */
+        .history-item { border-left: 4px solid #0d6efd; background: #f8f9fa; padding: 10px; border-radius: 6px; margin-bottom: 10px; font-size: 13px; }
+        .history-date { font-size: 11px; color: #6c757d; margin-bottom: 4px; }
+        .history-route { font-weight: bold; color: #212529; }
+        .history-driver { color: #198754; font-size: 12px; margin-top: 4px; }
+
+        /* --- MODAL KONFIRMASI KUSTOM --- */
+        .modal-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.5); display: flex; align-items: center;
+            justify-content: center; z-index: 1000; padding: 20px;
+        }
+        .modal-box {
+            background: #fff; border-radius: 12px; padding: 20px;
+            width: 100%; max-width: 320px; box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+        }
+        .modal-message { font-size: 15px; margin-bottom: 20px; color: #1c1e21; }
+        .modal-actions { display: flex; gap: 10px; }
+        .modal-actions button { width: auto; flex: 1; padding: 10px; font-size: 14px; }
+        .btn-modal-cancel { background: #e4e6eb; color: #050505; }
+        .btn-modal-ok { background: #0d6efd; color: #fff; }
+    </style>
+
+    <!-- Firebase SDK (Compat Version) -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+</head>
+<body>
+
+    <div class="header">
+        <h2>Commuter Area</h2>
+        <p style="margin: 5px 0 0 0; font-size: 14px; color: #65676b;">Pesan penjemputan Commuter Anda</p>
+    </div>
+
+    <!-- MODAL / FORM ISI NAMA PENGGUNA -->
+    <div id="setup-container" class="card">
+        <h3 style="margin-top:0; font-size: 16px; color: #0d6efd;">Registrasi Penumpang</h3>
+        <p style="font-size: 13px; color: #65676b;">Masukkan nama Anda terlebih dahulu:</p>
+        <div class="form-group">
+            <input type="text" id="input-user-name" placeholder="Contoh: Ahmad Subagja">
+        </div>
+        <button class="btn-primary" onclick="simpanNamaPengguna()">Simpan & Lanjutkan</button>
+    </div>
+
+    <!-- UTAMA -->
+    <div id="main-container" class="hidden">
+        
+        <!-- PROFIL PENGGUNA -->
+        <div class="card user-profile">
+            <div>
+                <span style="font-size: 12px; color: #65676b;">Nama Penumpang:</span><br>
+                <strong id="display-user-name" style="font-size: 15px; color: #0d6efd;">-</strong>
+            </div>
+            <button style="width: auto; padding: 5px 10px; font-size: 12px;" onclick="gantiNama()">Ubah Nama</button>
+        </div>
+
+        <!-- FORM PEMESANAN -->
+        <div id="form-container" class="card">
+            <h3 style="margin-top: 0; font-size: 16px;">Buat Pesanan Baru</h3>
+            
+            <div class="form-group">
+                <label for="pickup">Lokasi Penjemputan</label>
+                <select id="pickup">
+                    <option value="">-- Pilih Lokasi --</option>
+                    <option value="Lobby Head Office">Lobby Head Office</option>
+                    <option value="Lobby Annex">Lobby Annex</option>
+                    <option value="Lobby HRGA">Lobby HRGA</option>
+                    <option value="PPDD">PPDD</option>
+                    <option value="Klinik HRGA">Klinik HRGA</option>
+                    <option value="Tasti">Tasti</option>
+                    <option value="Koperasi TAM">Koperasi TAM</option>
+                    <option value="SPSI">SPSI</option>
+                    <option value="Sunter 3 / VLD">Sunter 3 / VLD</option>
+                    <option value="TDE">TDE</option>
+                    <option value="Sport Center TAM">Sport Center TAM</option>
+                    <option value="BM TAM office">BM TAM office</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="dropoff">Lokasi Pengantaran</label>
+                <select id="dropoff">
+                    <option value="">-- Pilih Lokasi --</option>
+                    <option value="Lobby Head Office">Lobby Head Office</option>
+                    <option value="Lobby Annex">Lobby Annex</option>
+                    <option value="Lobby HRGA">Lobby HRGA</option>
+                    <option value="PPDD">PPDD</option>
+                    <option value="Klinik HRGA">Klinik HRGA</option>
+                    <option value="Tasti">Tasti</option>
+                    <option value="Koperasi TAM">Koperasi TAM</option>
+                    <option value="SPSI">SPSI</option>
+                    <option value="Sunter 3 / VLD">Sunter 3 / VLD</option>
+                    <option value="TDE">TDE</option>
+                    <option value="Sport Center TAM">Sport Center TAM</option>
+                    <option value="BM TAM office">BM TAM office</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="jumlah-penumpang">Jumlah Penumpang</label>
+                <select id="jumlah-penumpang">
+                    <option value="0">0</option>
+                    <option value="1">1</option>
+                    <option value="2">2</option>
+                    <option value="3">3</option>
+                    <option value="4">4</option>
+                    <option value="5">5</option>
+                    <option value="lebih dari 5">Lebih dari 5</option>
+                </select>
+            </div>
+
+            <button class="btn-primary" onclick="buatPesanan()">Pesan Shuttle Sekarang</button>
+        </div>
+
+        <!-- STATUS PESANAN AKTIF -->
+        <div id="status-container" class="card hidden">
+            <h3 style="margin-top: 0; font-size: 16px;">Pesanan Aktif Anda</h3>
+            
+            <div id="status-badge" class="status-badge">MEMPROSES</div>
+
+            <div class="info-row">
+                <span style="color: #65676b;">ID Pesanan:</span>
+                <strong id="info-id">-</strong>
+            </div>
+            <div class="info-row">
+                <span style="color: #65676b;">Waktu Pemesanan:</span>
+                <strong id="info-waktu">-</strong>
+            </div>
+            <div class="info-row">
+                <span style="color: #65676b;">Penjemputan:</span>
+                <strong id="info-pickup">-</strong>
+            </div>
+            <div class="info-row">
+                <span style="color: #65676b;">Pengantaran:</span>
+                <strong id="info-dropoff">-</strong>
+            </div>
+            <div class="info-row">
+                <span style="color: #65676b;">Pengemudi:</span>
+                <strong id="info-driver" style="color: #0d6efd;">Mencari pengemudi...</strong>
+            </div>
+
+            <button class="btn-danger" onclick="batalkanPesanan()">Batalkan Pesanan</button>
+        </div>
+
+        <!-- RIWAYAT PEMESANAN -->
+        <div class="card">
+            <div style="overflow: hidden; margin-bottom: 10px;">
+                <button class="btn-clear" onclick="hapusRiwayat()">Hapus Riwayat</button>
+                <h3 style="margin: 0; font-size: 16px; line-height: 28px;">Riwayat Perjalanan</h3>
+            </div>
+            <div id="history-list">
+                <!-- Riwayat akan dimuat di sini -->
+            </div>
+        </div>
+
+    </div>
+
+    <!-- MODAL KONFIRMASI KUSTOM (pengganti confirm() bawaan browser) -->
+    <div id="custom-modal-overlay" class="modal-overlay hidden">
+        <div class="modal-box">
+            <div id="custom-modal-message" class="modal-message"></div>
+            <div class="modal-actions">
+                <button class="btn-modal-cancel" onclick="customConfirmResolve(false)">Batal</button>
+                <button class="btn-modal-ok" onclick="customConfirmResolve(true)">OK</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyCx_fMna5DUmdfkIobXsUxxs4YEkq-yz0k",
+            authDomain: "aplikasishuttle.firebaseapp.com",
+            databaseURL: "https://aplikasishuttle-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "aplikasishuttle",
+            storageBucket: "aplikasishuttle.firebasestorage.app",
+            messagingSenderId: "895559102631",
+            appId: "1:895559102631:web:e373a31cfb5cf5f9292b82"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        let currentUserName = localStorage.getItem('USER_NAME') || '';
+        let lastActiveBooking = null; // Menyimpan temporary data pesanan aktif saat ini
+
+        // ID unik per pengguna, agar data pesanan tiap pengguna tersimpan terpisah
+        // dan tidak saling menimpa satu sama lain di Firebase.
+        let currentUserId = localStorage.getItem('USER_ID');
+        if (!currentUserId) {
+            currentUserId = 'U-' + Date.now() + '-' + Math.floor(1000 + Math.random() * 9000);
+            localStorage.setItem('USER_ID', currentUserId);
+        }
+
+        window.onload = function() {
+            initApp();
+            tampilkanRiwayat();
+        };
+
+        // --- MODAL KONFIRMASI KUSTOM (pengganti confirm() bawaan) ---
+        let _customConfirmCallback = null;
+
+        function customConfirm(message) {
+            return new Promise((resolve) => {
+                document.getElementById('custom-modal-message').innerText = message;
+                document.getElementById('custom-modal-overlay').classList.remove('hidden');
+                _customConfirmCallback = resolve;
+            });
+        }
+
+        function customConfirmResolve(result) {
+            document.getElementById('custom-modal-overlay').classList.add('hidden');
+            if (_customConfirmCallback) {
+                _customConfirmCallback(result);
+                _customConfirmCallback = null;
+            }
+        }
+
+        function initApp() {
+            const setupContainer = document.getElementById('setup-container');
+            const mainContainer = document.getElementById('main-container');
+
+            if (!currentUserName) {
+                setupContainer.classList.remove('hidden');
+                mainContainer.classList.add('hidden');
+            } else {
+                setupContainer.classList.add('hidden');
+                mainContainer.classList.remove('hidden');
+                document.getElementById('display-user-name').innerText = currentUserName;
+                listenFirebase();
+            }
+        }
+
+        function simpanNamaPengguna() {
+            const inputName = document.getElementById('input-user-name').value.trim();
+            if (!inputName) {
+                alert("Silakan masukkan nama Anda!");
+                return;
+            }
+            currentUserName = inputName;
+            localStorage.setItem('USER_NAME', currentUserName);
+            initApp();
+        }
+
+        function gantiNama() {
+            localStorage.removeItem('USER_NAME');
+            currentUserName = '';
+            initApp();
+        }
+
+        function buatPesanan() {
+            const pickup = document.getElementById('pickup').value;
+            const dropoff = document.getElementById('dropoff').value;
+            const jumlahPenumpang = document.getElementById('jumlah-penumpang').value;
+
+            if (!pickup) {
+                alert("Silakan pilih lokasi penjemputan terlebih dahulu!");
+                return;
+            }
+            if (!dropoff) {
+                alert("Silakan pilih lokasi pengantaran terlebih dahulu!");
+                return;
+            }
+            if (pickup === dropoff) {
+                alert("Lokasi penjemputan dan pengantaran tidak boleh sama!");
+                return;
+            }
+            if (jumlahPenumpang === "") {
+                alert("Jumlah penumpang tidak boleh kosong!");
+                return;
+            }
+            if (jumlahPenumpang === "0") {
+                alert("Jumlah penumpang tidak boleh 0!");
+                return;
+            }
+
+            const dataPesanan = {
+                id: 'SHTL-' + Math.floor(1000 + Math.random() * 9000),
+                user_id: currentUserId,
+                user_name: currentUserName,
+                pickup: pickup,
+                dropoff: dropoff,
+                jumlah_penumpang: jumlahPenumpang,
+                status: 'PENDING',
+                driver: null,
+                waktu_pesan: new Date().toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' })
+            };
+
+            // Setiap pengguna menulis ke node miliknya sendiri (pesanan_aktif/{user_id})
+            // sehingga tidak menimpa pesanan pengguna lain yang sedang berjalan.
+            db.ref('pesanan_aktif/' + currentUserId).set(dataPesanan);
+        }
+
+        function listenFirebase() {
+            db.ref('pesanan_aktif/' + currentUserId).on('value', (snapshot) => {
+                const pesanan = snapshot.val();
+                const formContainer = document.getElementById('form-container');
+                const statusContainer = document.getElementById('status-container');
+
+                if (!pesanan) {
+                    // Jika pesanan sebelumnya ada dan statusnya ACCEPTED (Selesai diantar driver)
+                    if (lastActiveBooking && lastActiveBooking.status === 'ACCEPTED') {
+                        simpanKeRiwayat(lastActiveBooking);
+                        alert("Perjalanan Anda telah selesai!");
+                    }
+
+                    lastActiveBooking = null;
+                    formContainer.classList.remove('hidden');
+                    statusContainer.classList.add('hidden');
+                    document.getElementById('pickup').value = "";
+                    document.getElementById('dropoff').value = "";
+                    document.getElementById('jumlah-penumpang').value = "0";
+                } else {
+                    lastActiveBooking = pesanan; // Simpan status terakhir
+                    formContainer.classList.add('hidden');
+                    statusContainer.classList.remove('hidden');
+
+                    document.getElementById('info-id').innerText = pesanan.id;
+                    document.getElementById('info-waktu').innerText = pesanan.waktu_pesan || '-';
+                    document.getElementById('info-pickup').innerText = pesanan.pickup;
+                    document.getElementById('info-dropoff').innerText = pesanan.dropoff;
+
+                    const statusBadge = document.getElementById('status-badge');
+                    const infoDriver = document.getElementById('info-driver');
+
+                    if (pesanan.status === 'PENDING') {
+                        statusBadge.className = 'status-badge status-PENDING';
+                        statusBadge.innerText = 'MENUNGGU PENGEMUDI';
+                        infoDriver.innerText = 'Mencari pengemudi...';
+                    } else if (pesanan.status === 'ACCEPTED') {
+                        statusBadge.className = 'status-badge status-ACCEPTED';
+                        statusBadge.innerText = 'PENGEMUDI MENUJU LOKASI';
+                        infoDriver.innerText = pesanan.driver;
+                    }
+                }
+            });
+        }
+
+        async function batalkanPesanan() {
+            const ok = await customConfirm("Batalkan pesanan ini?");
+            if (ok) {
+                lastActiveBooking = null; // Reset agar tidak tersimpan ke riwayat saat dibatalkan
+                db.ref('pesanan_aktif/' + currentUserId).remove();
+            }
+        }
+
+        // --- FITUR RIWAYAT PEMESANAN LOKAL ---
+
+        function simpanKeRiwayat(data) {
+            let history = JSON.parse(localStorage.getItem('SHUTTLE_HISTORY')) || [];
+            
+            const itemRiwayat = {
+                id: data.id,
+                pickup: data.pickup,
+                dropoff: data.dropoff,
+                driver: data.driver || 'Driver',
+                waktu: new Date().toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' })
+            };
+
+            history.unshift(itemRiwayat); // Tambahkan ke paling atas
+            localStorage.setItem('SHUTTLE_HISTORY', JSON.stringify(history));
+            tampilkanRiwayat();
+        }
+
+        function tampilkanRiwayat() {
+            const historyList = document.getElementById('history-list');
+            let history = JSON.parse(localStorage.getItem('SHUTTLE_HISTORY')) || [];
+
+            if (history.length === 0) {
+                historyList.innerHTML = '<p style="text-align:center; color:#6c757d; font-size:13px; margin: 15px 0;">Belum ada riwayat perjalanan.</p>';
+                return;
+            }
+
+            let html = '';
+            history.forEach(item => {
+                html += `
+                    <div class="history-item">
+                        <div class="history-date">📅 ${item.waktu} | ID: ${item.id}</div>
+                        <div class="history-route">📍 ${item.pickup} ➔ 🏁 ${item.dropoff}</div>
+                        <div class="history-driver">🚗 Driver: <strong>${item.driver}</strong></div>
+                    </div>
+                `;
+            });
+
+            historyList.innerHTML = html;
+        }
+
+        async function hapusRiwayat() {
+            const ok = await customConfirm("Apakah Anda yakin ingin menghapus semua riwayat perjalanan?");
+            if (ok) {
+                localStorage.removeItem('SHUTTLE_HISTORY');
+                tampilkanRiwayat();
+            }
+        }
+    </script>
+</body>
+</html>
